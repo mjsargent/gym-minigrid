@@ -31,7 +31,7 @@ class MTEnv(MiniGridEnv):
 
         self.tile_colours = self.tile_colours[:n_colours]
         self.tile_rewards = {col: random.choice([-1, 0, 1]) for col in self.tile_colours}
-
+        self.positions_stale = True
         super().__init__(
             grid_size=size,
             max_steps=5*size**2,
@@ -40,25 +40,28 @@ class MTEnv(MiniGridEnv):
         )
 
     def _gen_grid(self, width, height):
-        self.grid = Grid(width, height)
+        if self.positions_stale:
+            self.grid = Grid(width, height)
 
-        # Generate the surrounding walls
-        self.grid.horz_wall(0, 0)
-        self.grid.horz_wall(0, height-1)
-        self.grid.vert_wall(0, 0)
-        self.grid.vert_wall(width-1, 0)
+            # Generate the surrounding walls
+            self.grid.horz_wall(0, 0)
+            self.grid.horz_wall(0, height-1)
+            self.grid.vert_wall(0, 0)
+            self.grid.vert_wall(width-1, 0)
 
-        types = ['floor']
-        objs = [] 
+            types = ['floor']
+            objs = [] 
 
-        # For each object to be generated
-        while len(objs) < self.numObjs:
-            objColor = random.choice(self.tile_colours)
-            obj = Floor(objColor)
+            # For each object to be generated
+            while len(objs) < self.numObjs:
+                objColor = random.choice(self.tile_colours)
+                obj = Floor(objColor)
 
-            self.place_obj(obj)
-            objs.append(obj)
-        
+                self.place_obj(obj)
+                objs.append(obj)
+            
+            self.positions_stale = False
+
         # Randomize the player start position and orientation
         if self.agent_start_pos is not None:
             self.agent_pos = self.agent_start_pos
@@ -73,8 +76,10 @@ class MTEnv(MiniGridEnv):
 
         # Choose a random object to be picked up
         self.mission = "Reach the goal"
-    
+       
     def set_tile_rewards(self, tile_rewards: dict = None):
+        self.reset()
+
         if tile_rewards == None:
             self.tile_rewards = {col: random.choice([-1, 0, 1]) for col in self.tile_colours}
         else:
@@ -106,11 +111,164 @@ class MTEnv(MiniGridEnv):
         for obj in self.grid.grid:
             if obj is not None:
                 if obj.type == "floor" and obj.color in self.tile_colours:
-                    max_obj_r += self.tile_rewards[obj.color]
+                    max_obj_r += np.max([0,self.tile_rewards[obj.color]])
 
         return max_obj_r
 
-class MTEnvFourRooms(MTEnv):
+
+class MTEnvFourRoomsStatic(MTEnv):
+    """
+    Static FourRooms
+    """
+    def __init__(self):
+        self._agent_default_pos = (1,1)  
+        self._goal_default_pos = (17,17)
+
+        super().__init__(size=19)
+
+    def _gen_grid(self, width, height):
+        # Create the grid
+        if self.positions_stale:
+            self.grid = Grid(width, height)
+
+            # Generate the surrounding walls
+            self.grid.horz_wall(0, 0)
+            self.grid.horz_wall(0, height - 1)
+            self.grid.vert_wall(0, 0)
+            self.grid.vert_wall(width - 1, 0)
+
+            room_w = width // 2
+            room_h = height // 2
+
+            # For each row of rooms
+            for j in range(0, 2):
+
+                # For each column
+                for i in range(0, 2):
+                    xL = i * room_w
+                    yT = j * room_h
+                    xR = xL + room_w
+                    yB = yT + room_h
+
+                    # Bottom wall and door
+                    if i + 1 < 2:
+                        self.grid.vert_wall(xR, yT, room_h)
+                        pos = (xR, self._rand_int(yT + 1, yB))
+                        self.grid.set(*pos, None)
+
+                    # Bottom wall and door
+                    if j + 1 < 2:
+                        self.grid.horz_wall(xL, yB, room_w)
+                        pos = (self._rand_int(xL + 1, xR), yB)
+                        self.grid.set(*pos, None)
+            types = ['floor']
+            objs = [] 
+
+            # For each object to be generated
+            while len(objs) < self.numObjs:
+                objColor = random.choice(self.tile_colours)
+                obj = Floor(objColor)
+
+                self.place_obj(obj)
+                objs.append(obj)
+
+            self.positions_stale = False
+
+        # Randomize the player start position and orientation
+        if self._agent_default_pos is not None:
+            self.agent_pos = self._agent_default_pos
+            self.grid.set(*self._agent_default_pos, None)
+            self.agent_dir = 0 
+        else:
+            self.place_agent()
+            
+        if self._goal_default_pos is not None:
+            goal = Goal()
+            self.put_obj(goal, *self._goal_default_pos)
+            goal.init_pos, goal.cur_pos = self._goal_default_pos
+        else:
+            self.place_obj(Goal())
+
+        self.mission = "Reach the goal"
+
+class MTEnvFourRoomsStaticWalls(MTEnv):
+    """
+    Static FourRooms
+    """
+    def __init__(self):
+        self._agent_default_pos = (1,1)  
+        self._goal_default_pos = (17,17)
+
+        super().__init__(size=19)
+
+    def _gen_grid(self, width, height):
+        # Create the grid
+        if self.positions_stale:
+            self.grid = Grid(width, height)
+
+            # Generate the surrounding walls
+            self.grid.horz_wall(0, 0)
+            self.grid.horz_wall(0, height - 1)
+            self.grid.vert_wall(0, 0)
+            self.grid.vert_wall(width - 1, 0)
+
+            room_w = width // 2
+            room_h = height // 2
+
+            # For each row of rooms
+            for j in range(0, 2):
+
+                # For each column
+                for i in range(0, 2):
+                    xL = i * room_w
+                    yT = j * room_h
+                    xR = xL + room_w
+                    yB = yT + room_h
+
+                    # Bottom wall and door
+                    if i + 1 < 2:
+                        self.grid.vert_wall(xR, yT, room_h)
+                        pos = (xR, self._rand_int(yT + 1, yB))
+                        self.grid.set(*pos, None)
+
+                    # Bottom wall and door
+                    if j + 1 < 2:
+                        self.grid.horz_wall(xL, yB, room_w)
+                        pos = (self._rand_int(xL + 1, xR), yB)
+                        self.grid.set(*pos, None)
+            types = ['floor']
+            objs = [] 
+
+            # For each object to be generated
+            while len(objs) < self.numObjs:
+                objColor = random.choice(self.tile_colours)
+                obj = Floor(objColor)
+
+                self.place_obj(obj)
+                objs.append(obj)
+
+            self.positions_stale = False
+
+        # Randomize the player start position and orientation
+        if self._agent_default_pos is not None:
+            self.agent_pos = self._agent_default_pos
+            self.grid.set(*self._agent_default_pos, None)
+            self.agent_dir = 0 
+        else:
+            self.place_agent()
+            
+        if self._goal_default_pos is not None:
+            goal = Goal()
+            self.put_obj(goal, *self._goal_default_pos)
+            goal.init_pos, goal.cur_pos = self._goal_default_pos
+        else:
+            self.place_obj(Goal())
+
+        self.mission = "Reach the goal"
+
+
+
+class MTEnvFourRoomsShufflePositions(MTEnv):
     def __init__(self):
         self._agent_default_pos = (1,1)  
         self._goal_default_pos = (17,17)
@@ -118,49 +276,139 @@ class MTEnvFourRooms(MTEnv):
 
     def _gen_grid(self, width, height):
         # Create the grid
-        self.grid = Grid(width, height)
+        if self.positions_stale:
+            self.grid = Grid(width, height)
 
-        # Generate the surrounding walls
-        self.grid.horz_wall(0, 0)
-        self.grid.horz_wall(0, height - 1)
-        self.grid.vert_wall(0, 0)
-        self.grid.vert_wall(width - 1, 0)
+            # Generate the surrounding walls
+            self.grid.horz_wall(0, 0)
+            self.grid.horz_wall(0, height - 1)
+            self.grid.vert_wall(0, 0)
+            self.grid.vert_wall(width - 1, 0)
 
-        room_w = width // 2
-        room_h = height // 2
+            room_w = width // 2
+            room_h = height // 2
 
-        # For each row of rooms
-        for j in range(0, 2):
+            # For each row of rooms
+            for j in range(0, 2):
 
-            # For each column
-            for i in range(0, 2):
-                xL = i * room_w
-                yT = j * room_h
-                xR = xL + room_w
-                yB = yT + room_h
+                # For each column
+                for i in range(0, 2):
+                    xL = i * room_w
+                    yT = j * room_h
+                    xR = xL + room_w
+                    yB = yT + room_h
 
-                # Bottom wall and door
-                if i + 1 < 2:
-                    self.grid.vert_wall(xR, yT, room_h)
-                    pos = (xR, self._rand_int(yT + 1, yB))
-                    self.grid.set(*pos, None)
+                    # Bottom wall and door
+                    if i + 1 < 2:
+                        self.grid.vert_wall(xR, yT, room_h)
+                        pos = (xR, self._rand_int(yT + 1, yB))
+                        self.grid.set(*pos, None)
 
-                # Bottom wall and door
-                if j + 1 < 2:
-                    self.grid.horz_wall(xL, yB, room_w)
-                    pos = (self._rand_int(xL + 1, xR), yB)
-                    self.grid.set(*pos, None)
-        types = ['floor']
-        objs = [] 
+                    # Bottom wall and door
+                    if j + 1 < 2:
+                        self.grid.horz_wall(xL, yB, room_w)
+                        pos = (self._rand_int(xL + 1, xR), yB)
+                        self.grid.set(*pos, None)
+            types = ['floor']
+            objs = [] 
 
-        # For each object to be generated
-        while len(objs) < self.numObjs:
-            objColor = random.choice(self.tile_colours)
-            obj = Floor(objColor)
+            # For each object to be generated
+            while len(objs) < self.numObjs:
+                objColor = random.choice(self.tile_colours)
+                obj = Floor(objColor)
 
-            self.place_obj(obj)
-            objs.append(obj)
+                self.place_obj(obj)
+                objs.append(obj)
 
+            self.positions_stale = False
+
+        # Randomize the player start position and orientation
+        if self._agent_default_pos is not None:
+            self.agent_pos = self._agent_default_pos
+            self.grid.set(*self._agent_default_pos, None)
+            self.agent_dir = 0 
+        else:
+            self.place_agent()
+            
+        if self._goal_default_pos is not None:
+            goal = Goal()
+            self.put_obj(goal, *self._goal_default_pos)
+            goal.init_pos, goal.cur_pos = self._goal_default_pos
+        else:
+            self.place_obj(Goal())
+
+        self.mission = "Reach the goal"
+
+    def set_tile_rewards(self, tile_rewards: dict = None):
+        # set postitions stale to cause a regeneration
+        self.positions_stale = True
+        self.reset()
+
+        if tile_rewards == None:
+            self.tile_rewards = {col: random.choice([-1, 0, 1]) for col in self.tile_colours}
+        else:
+            self.tile_rewards = tile_rewards
+
+
+class MTEnvFourRoomsLandmarks(MTEnv):
+    def __init__(self):
+        self._agent_default_pos = (1,1)  
+        self._goal_default_pos = (17,17)
+        self.n_landmarks = 2
+        super().__init__(size=19)
+
+    def _gen_grid(self, width, height):
+        # Create the grid
+        if self.positions_stale:
+            self.grid = Grid(width, height)
+
+            # Generate the surrounding walls
+            self.grid.horz_wall(0, 0)
+            self.grid.horz_wall(0, height - 1)
+            self.grid.vert_wall(0, 0)
+            self.grid.vert_wall(width - 1, 0)
+
+            room_w = width // 2
+            room_h = height // 2
+
+            # For each row of rooms
+            for j in range(0, 2):
+
+                # For each column
+                for i in range(0, 2):
+                    xL = i * room_w
+                    yT = j * room_h
+                    xR = xL + room_w
+                    yB = yT + room_h
+
+                    # Bottom wall and door
+                    if i + 1 < 2:
+                        self.grid.vert_wall(xR, yT, room_h)
+                        pos = (xR, self._rand_int(yT + 1, yB))
+                        self.grid.set(*pos, None)
+
+                    # Bottom wall and door
+                    if j + 1 < 2:
+                        self.grid.horz_wall(xL, yB, room_w)
+                        pos = (self._rand_int(xL + 1, xR), yB)
+                        self.grid.set(*pos, None)
+
+            types = ['floor']
+            objs = [] 
+            # place landmarks
+            valid_idx_x = [i for i in range(2,8)] + [i for i in range(11,17)]
+            valid_idx_y = [i for i in range(2,8)] + [i for i in range(11,17)]
+            for n in range(self.n_landmarks):
+                self.put_obj(Wall(),random.choice(valid_idx_x), random.choice(valid_idx_y))
+            # For each object to be generated
+            while len(objs) < self.numObjs:
+                objColor = random.choice(self.tile_colours)
+                obj = Floor(objColor)
+
+                self.place_obj(obj)
+                objs.append(obj)
+
+            self.positions_stale = False
 
         # Randomize the player start position and orientation
         if self._agent_default_pos is not None:
@@ -191,7 +439,24 @@ register(
         entry_point='gym_minigrid.envs:MTEnv8x8N9'
 )
 
+#register(
+#        id='MiniGrid-MTEnvFourRooms-v0',
+#        entry_point='gym_minigrid.envs:MTEnvFourRooms'
+#)
+
 register(
-        id='MiniGrid-MTEnvFourRooms-v0',
-        entry_point='gym_minigrid.envs:MTEnvFourRooms'
+        id='MiniGrid-MTEnvFourRoomsStatic-v0',
+        entry_point='gym_minigrid.envs:MTEnvFourRoomsStatic'
+)
+register(
+    id='MiniGrid-MTEnvFourRoomsStaticWalls-v0',
+        entry_point='gym_minigrid.envs:MTEnvFourRoomsStaticWalls'
+)
+register(
+        id='MiniGrid-MTEnvFourRoomsShufflePositions-v0',
+        entry_point='gym_minigrid.envs:MTEnvFourRoomsShufflePositions'
+)
+register(
+        id='MiniGrid-MTEnvFourRoomsLandmarks-v0',
+        entry_point='gym_minigrid.envs:MTEnvFourRoomsLandmarks'
 )
